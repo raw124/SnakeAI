@@ -1,203 +1,556 @@
-import random
 import pygame
+from pygame.locals import *
+import random
+import numpy as np
+import math
 
 
+# ---------- constants ---------- #
+# size of each grid
+TILE_SIZE = (10, 10)
 
-class cube(object):
-    rows = 20
-    w = 500
+# number of grid of the screen
+SCREENTILES = (30, 30)
 
-    def __init__(self, start, dirnx=1, dirny=0, color=(255, 0, 0)):
-        self.pos = start
-        self.dirnx = 1
-        self.dirny = 0
-        self.color = color
+TILE_RECT = pygame.Rect(0, 0, TILE_SIZE[0], TILE_SIZE[1])
+SCREENSIZE = ((SCREENTILES[0]+1)*TILE_SIZE[0], (SCREENTILES[1]+1)*TILE_SIZE[1])
+SCREENRECT = pygame.Rect(0, 0, SCREENSIZE[0], SCREENSIZE[1])
 
-    def move(self, dirnx, dirny):
-        self.dirnx = dirnx
-        self.dirny = dirny
-        self.pos = (self.pos[0] + self.dirnx, self.pos[1] + self.dirny)
-
-    def draw(self, surface, eyes=False):
-        dis = self.w // self.rows
-        i = self.pos[0]
-        j = self.pos[1]
-
-        pygame.draw.rect(surface, self.color, (i * dis + 1, j * dis + 1, dis - 2, dis - 2))
-        if eyes:
-            centre = dis // 2
-            radius = 3
-            circleMiddle = (i * dis + centre - radius, j * dis + 8)
-            circleMiddle2 = (i * dis + dis - radius * 2, j * dis + 8)
-            pygame.draw.circle(surface, (0, 0, 0), circleMiddle, radius)
-            pygame.draw.circle(surface, (0, 0, 0), circleMiddle2, radius)
+# position of snake at start
+START_TILE = (5, 5)
+# lenght of snake at start
+START_SEGMENTS = 4
 
 
-class snake(object):
-    body = []
-    turns = {}
-    invalidDir = None
+SNAKE_HEAD_RADIUS = 13
+SNAKE_SEGMENT_RADIUS = 17
+FOOD_RADIUS = SNAKE_SEGMENT_RADIUS
 
-    def __init__(self, color, pos):
-        self.color = color
-        self.head = cube(pos)
-        self.body.append(self.head)
-        self.dirnx = 0
-        self.dirny = 1
+CAPTION = 'MiniSnake'
+FPS = 144
+
+MOVE_RATE = 1  # how many frame per move
+DIFFICULTY_INCREASE_RATE = .09
+MOVE_THRESHOLD = 1  # when moverate counts up to this the snake moves
+BLOCK_SPAWN_RATE = 2
+
+
+SCREENTILES = (
+    (SCREENSIZE[0] / TILE_SIZE[0]) - 1,
+    (SCREENSIZE[1] / TILE_SIZE[1]) - 1
+)
+
+BACKGROUND_COLOR = (255, 255, 255)
+SNAKE_HEAD_COLOR = (150, 0, 0)
+SNAKE_SEGMENT_COLOR = (255, 0, 0)
+FOOD_COLOR = (0, 255, 0)
+BLOCK_COLOR = (0, 0, 150)
+COLORKEY_COLOR = (255, 255, 0)
+
+SCORE_COLOR = (0, 0, 0)
+SCORE_POS = (20, 20)
+SCORE_PREFIX = 'Score: '
+
+MOVE_VECTORS = {'left': (-1, 0),
+                'right': (1, 0),
+                'up': (0, -1),
+                'down': (0, 1)
+                }
+MOVE_VECTORS_PIXELS = {'left': (-TILE_SIZE[0], 0),
+                       'right': (TILE_SIZE[0], 0),
+                       'up': (0, -TILE_SIZE[1]),
+                       'down': (0, TILE_SIZE[1])
+                       }
+
+
+# ----------- game objects ----------- #
+class snake_segment(pygame.sprite.Sprite):
+    def __init__(self, tilepos, segment_groups, color=SNAKE_SEGMENT_COLOR, radius=SNAKE_SEGMENT_RADIUS):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = self.image = pygame.Surface(TILE_SIZE).convert()
+        self.image.fill(COLORKEY_COLOR)
+        self.image.set_colorkey(COLORKEY_COLOR)
+        pygame.draw.circle(self.image, color, TILE_RECT.center, radius)
+
+        self.tilepos = tilepos
+
+        self.rect = self.image.get_rect()
+        self.rect.topleft = (tilepos[0] * TILE_SIZE[0], tilepos[1] * TILE_SIZE[1])
+
+        self.segment_groups = segment_groups
+        for group in segment_groups:
+            group.add(self)
+
+        self.behind_segment = None
+
+        self.movedir = 'left'
+
+    # this function adds a segment at the end of the snake
+    def add_segment(self):
+
+        seg = self
+        while True:
+            if seg.behind_segment == None:
+                x = seg.tilepos[0]
+                y = seg.tilepos[1]
+                if seg.movedir == 'left':
+                    x += 1
+                elif seg.movedir == 'right':
+                    x -= 1
+                elif seg.movedir == 'up':
+                    y += 1
+                elif seg.movedir == 'down':
+                    y -= 1
+                seg.behind_segment = snake_segment((x, y), seg.segment_groups)
+                seg.behind_segment.movedir = seg.movedir
+                break
+            else:
+                # looping until we get the last segment of the snake
+                seg = seg.behind_segment
+
+    def update(self):
+        pass
 
     def move(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-
-            keys = pygame.key.get_pressed()
-
-            for key in keys:
-                if keys[pygame.K_LEFT]:
-                    if self.invalidDir != 'left':
-                        self.dirnx = -1
-                        self.dirny = 0
-                        self.turns[self.head.pos[:]] = [self.dirnx, self.dirny]
-                        self.invalidDir = 'right'
+        self.tilepos = (
+            self.tilepos[0] + MOVE_VECTORS[self.movedir][0],
+            self.tilepos[1] + MOVE_VECTORS[self.movedir][1]
+        )
+        self.rect.move_ip(MOVE_VECTORS_PIXELS[self.movedir])
+        if self.behind_segment != None:
+            self.behind_segment.move()
+            self.behind_segment.movedir = self.movedir
 
 
-                elif keys[pygame.K_RIGHT]:
-                    if self.invalidDir != 'right':
-                        self.dirnx = 1
-                        self.dirny = 0
-                        self.turns[self.head.pos[:]] = [self.dirnx, self.dirny]
-                        self.invalidDir = 'left'
+class snake_head(snake_segment):
+    def __init__(self, tilepos, movedir, segment_groups):
+        snake_segment.__init__(self, tilepos, segment_groups, color=SNAKE_HEAD_COLOR, radius=SNAKE_HEAD_RADIUS)
+        self.movedir = movedir
+        self.movecount = 0
 
-                elif keys[pygame.K_UP]:
-                    if self.invalidDir != 'up':
-                        self.dirnx = 0
-                        self.dirny = -1
-                        self.turns[self.head.pos[:]] = [self.dirnx, self.dirny]
-                        self.invalidDir = 'down'
+    def update(self):
+        self.movecount += MOVE_RATE
+        if self.movecount >= MOVE_THRESHOLD:
+            self.move()
+            self.movecount = 0
 
-                elif keys[pygame.K_DOWN]:
-                    if self.invalidDir != 'down':
-                        self.dirnx = 0
-                        self.dirny = 1
-                        self.turns[self.head.pos[:]] = [self.dirnx, self.dirny]
-                        self.invalidDir = 'up'
-
-        for i, c in enumerate(self.body):
-            p = c.pos[:]
-            if p in self.turns:
-                turn = self.turns[p]
-                c.move(turn[0], turn[1])
-                if i == len(self.body) - 1:
-                    self.turns.pop(p)
-            else:
-                if c.dirnx == -1 and c.pos[0] <= 0:
-                    c.pos = (c.rows - 1, c.pos[1])
-                elif c.dirnx == 1 and c.pos[0] >= c.rows - 1:
-                    c.pos = (0, c.pos[1])
-                elif c.dirny == 1 and c.pos[1] >= c.rows - 1:
-                    c.pos = (c.pos[0], 0)
-                elif c.dirny == -1 and c.pos[1] <= 0:
-                    c.pos = (c.pos[0], c.rows - 1)
-                else:
-                    c.move(c.dirnx, c.dirny)
-
-    def reset(self, pos):
-        self.head = cube(pos)
-        self.body = []
-        self.body.append(self.head)
-        self.turns = {}
-        self.dirnx = 0
-        self.dirny = 1
-        self.invalidDir = None
-
-    def addCube(self):
-        tail = self.body[-1]
-        dx, dy = tail.dirnx, tail.dirny
-
-        if dx == 1 and dy == 0:
-            self.body.append(cube((tail.pos[0] - 1, tail.pos[1])))
-        elif dx == -1 and dy == 0:
-            self.body.append(cube((tail.pos[0] + 1, tail.pos[1])))
-        elif dx == 0 and dy == 1:
-            self.body.append(cube((tail.pos[0], tail.pos[1] - 1)))
-        elif dx == 0 and dy == -1:
-            self.body.append(cube((tail.pos[0], tail.pos[1] + 1)))
-
-        self.body[-1].dirnx = dx
-        self.body[-1].dirny = dy
-
-    def draw(self, surface):
-        for i, c in enumerate(self.body):
-            if i == 0:
-                c.draw(surface, True)
-            else:
-                c.draw(surface)
-
-
-def drawGrid(w, rows, surface):
-    sizeBtwn = w // rows
-
-    x = 0
-    y = 0
-    for l in range(rows):
-        x = x + sizeBtwn
-        y = y + sizeBtwn
-
-        pygame.draw.line(surface, (255, 255, 255), (x, 0), (x, w))
-        pygame.draw.line(surface, (255, 255, 255), (0, y), (w, y))
-
-
-def redrawWindow(surface):
-    global rows, width, s, snack
-    surface.fill((0, 0, 0))
-    s.draw(surface)
-    snack.draw(surface)
-    #drawGrid(width, rows, surface)
-    pygame.display.update()
-
-# add a snack to a random location on the board
-def randomSnack(rows, item):
-    positions = item.body
-
-    while True:
-        x = random.randrange(rows)
-        y = random.randrange(rows)
-        if len(list(filter(lambda z: z.pos == (x, y), positions))) > 0:
-            continue
-        else:
-            break
-
-    return (x, y)
-
-
-def main():
-    global width, rows, s, snack
-    width = 500
-    rows = 20
-    win = pygame.display.set_mode((width, width))
-    s = snake((255, 0, 0), (10, 10))
-    snack = cube(randomSnack(rows, s), color=(0, 255, 0))
-    flag = True
-
-    clock = pygame.time.Clock()
-
-    while flag:
-        pygame.time.delay(50)
-        clock.tick(10)
-        s.move()
-        if s.body[0].pos == snack.pos:
-            s.addCube()
-            snack = cube(randomSnack(rows, s), color=(0, 255, 0))
-
-        for x in range(len(s.body)):
-            if s.body[x].pos in list(map(lambda z: z.pos, s.body[x + 1:])):
-                print('Score: ', len(s.body))
-                s.reset((10, 10))
+    def get_positions(self):
+        seg = self
+        positions = []
+        while True:
+            position = seg.tilepos
+            positions.append((position[0], position[1]))
+            if seg.behind_segment == None:
                 break
+            else:
+                # looping until we get the last segment of the snake
+                seg = seg.behind_segment
+        return positions
 
-        redrawWindow(win)
 
-    pass
+class food(pygame.sprite.Sprite):
+    def __init__(self, takenupgroup):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = self.image = pygame.Surface(TILE_SIZE).convert()
+        self.image.fill(COLORKEY_COLOR)
+        self.image.set_colorkey(COLORKEY_COLOR)
+        pygame.draw.circle(self.image, FOOD_COLOR, TILE_RECT.center, FOOD_RADIUS)
+
+        self.rect = self.image.get_rect()
+        while True:
+            self.position = (
+                random.randint(0, SCREENTILES[0]),
+                random.randint(0, SCREENTILES[1])
+            )
+
+            self.rect.topleft = (
+                self.position[0] * TILE_SIZE[0],
+                self.position[1] * TILE_SIZE[1]
+            )
+            continue_loop = False
+            for sprt in takenupgroup:
+                if self.rect.colliderect(sprt):
+                    continue_loop = True  # collision, food cant go here
+            if continue_loop:
+                continue
+            else:
+                break # no collision, food can go here
 
 
-main()
+class block(pygame.sprite.Sprite):
+    def __init__(self, takenupgroup):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = self.image = pygame.Surface(TILE_SIZE).convert()
+        self.image.fill(BLOCK_COLOR)
+
+        self.rect = self.image.get_rect()
+        while True:
+            self.position = (
+                random.randint(0, SCREENTILES[0]),
+                random.randint(0, SCREENTILES[1])
+            )
+
+            self.rect.topleft = (
+                self.position[0] * TILE_SIZE[0],
+                self.position[1] * TILE_SIZE[1]
+            )
+            for sprt in takenupgroup:
+                if self.rect.colliderect(sprt):
+                    continue  # collision, food cant go here
+            break  # no collision, food can go here
+
+
+class Game():
+    def __init__(self):
+        pygame.init()
+
+
+    def reset(self):
+        # show screen
+        self.screen = pygame.display.set_mode(SCREENSIZE)
+        pygame.display.set_caption(CAPTION)
+        self.bg = pygame.Surface(SCREENSIZE).convert()
+        self.bg.fill(BACKGROUND_COLOR)
+        self.screen.blit(self.bg, (0, 0))
+
+        self.snakegroup = pygame.sprite.Group()
+        self.snakeheadgroup = pygame.sprite.Group()
+        self.foodgroup = pygame.sprite.Group()
+        self.blockgroup = pygame.sprite.Group()
+        self.takenupgroup = pygame.sprite.Group()
+
+        self.all = pygame.sprite.RenderUpdates()
+        column = SCREENSIZE[0] / TILE_SIZE[0]
+        row = SCREENSIZE[1] / TILE_SIZE[1]
+        self.BlockPositions = []
+        self.grid = np.zeros((int(row), int(column)))
+        self.snake = snake_head(START_TILE, 'right', [self.snakegroup, self.all, self.takenupgroup])
+        self.snakeheadgroup.add(self.snake)
+        for index in range(START_SEGMENTS):
+            self.snake.add_segment()
+
+        self.currentfood = 'no food'
+
+        self.block_frame = 0
+
+        self.currentscore = 0
+
+        # turn screen to white
+        pygame.display.flip()
+
+        # mainloop
+        self.quit = False
+        self.clock = pygame.time.Clock()
+        self.lose = False
+
+    def getObservation(self):
+        # x = BodyPositions[0][0]
+        # y = BodyPositions[0][1]
+        x = self.snake.tilepos[0]
+        y = self.snake.tilepos[1]
+
+        def loop(x_increment, y_increment, head_x, head_y):
+
+            # adjusting tuple coordinate to array base 0 coordinate
+            head_x = head_x + 1
+            head_y = head_y + 1
+            distance = 0
+            base_distance = math.sqrt((x_increment ** 2) + (y_increment ** 2))
+            food = -1
+            body = -1
+            wall = -1
+
+            # moving out of the head of the snake
+            x = head_x + x_increment
+            y = head_y + y_increment
+
+            max_x = len(self.grid[0])
+            max_y = len(self.grid)
+            while (x > -1) and (y > -1) and (x < max_x) and (y < max_y):
+                if self.grid[y, x] == 3:
+                    if body == -1:
+                        body = distance
+                if self.grid[y, x] == 1:
+                    if food == -1:
+                        food = distance
+
+                distance += base_distance
+                # moving further
+
+                if self.grid[y, x] == 4:
+                    if wall == -1:
+                        wall = distance
+
+                x += x_increment
+                y += y_increment
+            # wall = distance
+            # maximum_distance = 28.284
+            maximum_distance = math.sqrt((SCREENTILES[0] ** 2) + (SCREENTILES[1] ** 2))
+
+            if body == -1:
+                body = maximum_distance
+
+            if food == -1:
+                food = maximum_distance
+
+            return [wall, food, body]
+
+        if self.snake.movedir == 'left':
+            observation = np.array([
+                # left
+                loop(-1, 0, x, y),
+
+                # up left
+                loop(-1, -1, x, y),
+
+                # up
+                loop(0, -1, x, y),
+
+                # up right
+                loop(1, -1, x, y),
+
+                # right
+                loop(1, 0, x, y),
+
+                # down right
+                loop(1, 1, x, y),
+
+                # down
+                loop(0, 1, x, y),
+
+                # down left
+                loop(-1, 1, x, y),
+
+            ])
+        elif self.snake.movedir == 'right':
+            observation = np.array([
+                # right
+                loop(1, 0, x, y),
+
+                # down right
+                loop(1, 1, x, y),
+
+                # down
+                loop(0, 1, x, y),
+
+                # down left
+                loop(-1, 1, x, y),
+
+                # left
+                loop(-1, 0, x, y),
+
+                # up left
+                loop(-1, -1, x, y),
+
+                # up
+                loop(0, -1, x, y),
+
+                # up right
+                loop(1, -1, x, y),
+
+            ])
+        elif self.snake.movedir == 'up':
+            observation = np.array([
+                # up
+                loop(0, -1, x, y),
+
+                # up right
+                loop(1, -1, x, y),
+
+                # right
+                loop(1, 0, x, y),
+
+                # down right
+                loop(1, 1, x, y),
+
+                # down
+                loop(0, 1, x, y),
+
+                # down left
+                loop(-1, 1, x, y),
+
+                # left
+                loop(-1, 0, x, y),
+
+                # up left
+                loop(-1, -1, x, y),
+
+            ])
+        elif self.snake.movedir == 'down':
+            observation = np.array([
+
+                # down
+                loop(0, 1, x, y),
+
+                # down left
+                loop(-1, 1, x, y),
+
+                # left
+                loop(-1, 0, x, y),
+
+                # up left
+                loop(-1, -1, x, y),
+
+                # up
+                loop(0, -1, x, y),
+
+                # up right
+                loop(1, -1, x, y),
+
+                # right
+                loop(1, 0, x, y),
+
+                # down right
+                loop(1, 1, x, y),
+            ])
+
+        observation.shape = (24,)
+        scale = math.sqrt(SCREENTILES[0] ** 2 + SCREENTILES[1] ** 2)
+        observation_scaled = 1 - 2 * observation / scale
+        return observation_scaled
+        # return observation
+
+    def step(self, direction):
+
+
+        currentmovedir = self.snake.movedir
+        if direction == 2:
+            tomove = currentmovedir
+        else:
+            if currentmovedir == 'up':
+                if direction:
+                    tomove = 'right'
+                else:
+                    tomove = 'left'
+            elif currentmovedir == 'right':
+                if direction:
+                    tomove = 'down'
+                else:
+                    tomove = 'up'
+            elif currentmovedir == 'down':
+                if direction:
+                    tomove = 'left'
+                else:
+                    tomove = 'right'
+            elif currentmovedir == 'left':
+                if direction:
+                    tomove = 'up'
+                else:
+                    tomove = 'down'
+
+        self.snake.movedir = tomove
+
+        # clearing
+        self.all.clear(self.screen, self.bg)
+
+        # updates snake position
+        self.all.update()
+
+        if self.currentfood == 'no food':
+            self.currentfood = food(self.takenupgroup)
+            self.foodgroup.add(self.currentfood)
+            self.takenupgroup.add(self.currentfood)
+            self.all.add(self.currentfood)
+
+        column = SCREENSIZE[0] / TILE_SIZE[0]
+        row = SCREENSIZE[1] / TILE_SIZE[1]
+        self.grid = np.zeros((int(row + 2), int(column + 2)))
+        self.grid[[0, -1], :] = 4
+        self.grid[:, [0, -1]] = 4
+
+        BodyPositions = self.snake.get_positions()
+
+        for i in range(0, len(BodyPositions)):
+            # 3 is body part
+            position = BodyPositions[i]
+            if i == 0:
+                self.grid[position[1] + 1, position[0] + 1] = 2
+            else:
+                self.grid[position[1] + 1, position[0] + 1] = 3
+
+        # 2 is food
+        self.grid[self.currentfood.position[1] + 1, self.currentfood.position[0] + 1] = 1
+
+
+
+        for i in range(0, len(BodyPositions)):
+            # 3 is body part
+            position = BodyPositions[i]
+            if i == 0:
+                self.grid[position[1] + 1, position[0] + 1] = 2
+            else:
+                self.grid[position[1] + 1, position[0] + 1] = 3
+
+        # print(self.grid)
+        pos = self.snake.rect.topleft
+        if pos[0] < 0:
+            quit.lose = True
+            self.lose = True
+        if pos[0] >= SCREENSIZE[0]:
+            quit.lose = True
+            self.lose = True
+        if pos[1] < 0:
+            quit.lose = True
+            self.lose = True
+        if pos[1] >= SCREENSIZE[1]:
+            quit.lose = True
+            self.lose = True
+
+        # collisions
+        # head -> tail
+        col = pygame.sprite.groupcollide(self.snakeheadgroup, self.snakegroup, False, False)
+        for head in col:
+            for tail in col[head]:
+                if not tail is self.snake:
+                    self.quit = True
+                    self.lose = True
+        # head -> food
+        col = pygame.sprite.groupcollide(self.snakeheadgroup, self.foodgroup, False, True)
+        self.reward = 1
+        for head in col:
+            for tail in col[head]:
+                self.currentfood = 'no food'
+                self.snake.add_segment()
+                self.currentscore += 1
+                self.reward = 100
+                global MOVE_RATE, DIFFICULTY_INCREASE_RATE
+                MOVE_RATE += DIFFICULTY_INCREASE_RATE
+                self.block_frame += 1
+
+        # head -> blocks
+        col = pygame.sprite.groupcollide(self.snakeheadgroup, self.blockgroup, False, False)
+        for head in col:
+            for collidedblock in col[head]:
+                quit.lose = True
+                self.lose = True
+
+        # game over
+        if self.lose == True:
+            pass
+
+
+        # 4 is wall or block
+        for i in range(0, len(self.BlockPositions)):
+            # 3 is body part
+            position = self.BlockPositions[i]
+            self.grid[position[1] + 1, position[0] + 1] = 4
+
+        return self.getObservation(), self.reward, self.lose, self.currentscore
+
+    def render(self):
+        # score
+        d = self.screen.blit(self.bg, SCORE_POS, pygame.Rect(SCORE_POS, (50, 100)))
+        f = pygame.font.Font(None, 12)
+        scoreimage = f.render(SCORE_PREFIX + str(self.currentscore), True, SCORE_COLOR)
+        d2 = self.screen.blit(scoreimage, SCORE_POS)
+
+        # drawing
+        dirty = self.all.draw(self.screen)
+        dirty.append(d)
+        dirty.append(d2)
+
+        # updating screen
+        pygame.display.update(dirty)
+
+        # waiting
+        self.clock.tick(FPS)
