@@ -97,11 +97,12 @@ def generate_population(model):
         scores.append(score)
 
     # some stats here, to further illustrate the neural network magic!
-    print('Average accepted score:', mean(accepted_scores))
+    '''print('Average accepted score:', mean(accepted_scores))
     print('Score Requirement:', score_requirement)
     print('Median score for accepted scores:', median(accepted_scores))
-    print(Counter(accepted_scores))
-    score_requirement = mean(accepted_scores)
+    print(Counter(accepted_scores))'''
+    if len(accepted_scores) != 0:
+        score_requirement = mean(accepted_scores)
 
     # just in case you wanted to reference later
     training_data_save = np.array([training_data, score_requirement])
@@ -170,26 +171,36 @@ def evaluate(model):
             if done: break
 
         scores.append(score)
-    print('Average Score is')
-    print('Average Score:', sum(scores) / len(scores))
+    # print('Average Score is')
+    print('\nAverage Score:', sum(scores) / len(scores))
     print('choice 1:{}  choice 0:{}'.format(choices.count(1) / len(choices), choices.count(0) / len(choices)))
     print('Score Requirement:', score_requirement)
 
 if __name__ == "__main__":
+    generation = 1
+    num = 0
     some_random_games_first()
     training_data = generate_population(None)
     model = create_dummy_model(training_data)
-    model = train_model(training_data, model)
-    evaluate(model)
-    generation = 1
-    while True:
-        generation += 1
-
-        print('Generation: ', generation)
-        # training_data = initial_population(model)
-        training_data = np.append(training_data, generate_population(None), axis=0)
-        print('generation: ', generation, ' initial population: ', len(training_data))
-        if len(training_data) == 0:
-            break
-        model = train_model(training_data, model)
-        evaluate(model)
+    while num != "3":
+        print("\n1. Train Model.")
+        print("2. Evaluate Model.")
+        print("3. Quit.")
+        num = input("Enter number: ")
+        if num == "1":
+            if generation == 1:
+                model = train_model(training_data, model)
+            else:
+                print("\nSimulating games...")
+                data = generate_population(None)
+                if len(data) == 0:
+                    print("\nNone of the simulated games reached the score requirement.\n")
+                else:
+                    training_data = np.append(training_data, data, axis=0)
+                    model = train_model(training_data, model)
+            print('Generation: ', generation, ' Initial Population: ', len(training_data), ' Score Requirement: ', score_requirement)
+            generation += 1
+        if num == "2":
+            evaluate(model)
+        if num == "3":
+            print("Quit")
