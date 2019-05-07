@@ -263,6 +263,9 @@ class Game():
             # moving out of the head of the snake
             x = head_x + x_increment
             y = head_y + y_increment
+            
+            foodX = 0
+            foodY = 0
 
             max_x = len(self.grid[0])
             max_y = len(self.grid)
@@ -273,7 +276,9 @@ class Game():
                 if self.grid[y, x] == 1:
                     if food == -1:
                         food = distance
-
+                        foodX = x
+                        foodY = y
+                        
                 distance += base_distance
                 # moving further
 
@@ -283,6 +288,7 @@ class Game():
 
                 x += x_increment
                 y += y_increment
+            
             # wall = distance
             # maximum_distance = 28.284
             maximum_distance = math.sqrt((SCREENTILES[0] ** 2) + (SCREENTILES[1] ** 2))
@@ -292,8 +298,13 @@ class Game():
 
             if food == -1:
                 food = maximum_distance
-
-            return [wall, food, body]
+                headFoodDist = maximum_distance  
+                foodChange = maximum_distance
+            else:
+                headFoodDist = math.sqrt(((head_x - foodX) ** 2) + ((head_y - foodY) ** 2))
+                foodChange = food - headFoodDist
+            
+            return [wall, food, foodChange, body]
 
         if self.snake.movedir == 'left':
             observation = np.array([
@@ -404,7 +415,7 @@ class Game():
                 loop(1, 1, x, y),
             ])
 
-        observation.shape = (24,)
+        observation.shape = (32,)
         scale = math.sqrt(SCREENTILES[0] ** 2 + SCREENTILES[1] ** 2)
         observation_scaled = 1 - 2 * observation / scale
         return observation_scaled
