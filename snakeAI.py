@@ -96,11 +96,6 @@ def generate_population(model):
         # save overall scores
         scores.append(score)
 
-    # some stats here, to further illustrate the neural network magic!
-    '''print('Average accepted score:', mean(accepted_scores))
-    print('Score Requirement:', score_requirement)
-    print('Median score for accepted scores:', median(accepted_scores))
-    print(Counter(accepted_scores))'''
     if len(accepted_scores) != 0:
         score_requirement = mean(accepted_scores)
 
@@ -147,13 +142,43 @@ def evaluate(model):
     # now it's time to evaluate the trained model
     scores = []
     choices = []
-    for each_game in range(20):
+    foodCounts = []
+    for each_game in range(5):
         score = 0
         game_memory = []
         prev_obs = []
         env = game()
         env.reset()
-        for _ in range(goal_steps):
+        count = 0
+        foodCount = 0
+        currentScore = 0
+        stop = False
+        while stop == False:
+            if foodCount < 5:
+                if count == 150:
+                    count = 0
+                    currentScore = 0
+                    if currentScore <= 150:
+                        stop = True
+            elif foodCount < 10:
+                if count == 300:
+                    count = 0
+                    currentScore = 0
+                    if currentScore <= 300:
+                        stop = True
+            elif foodCount < 15:
+                if count == 600:
+                    count = 0
+                    currentScore = 0
+                    if currentScore <= 600:
+                        stop = True
+            else:
+                if count == 900:
+                    count = 0
+                    currentScore = 0
+                    if currentScore <= 900:
+                        stop = True
+                
             env.render()
 
             if len(prev_obs) == 0:
@@ -168,11 +193,17 @@ def evaluate(model):
             prev_obs = new_observation
             game_memory.append([new_observation, action])
             score += reward
+            currentScore += reward
+            if reward == 100:
+                foodCount += 1
+            count += 1
             if done: break
 
         scores.append(score)
-    # print('Average Score is')
+        foodCounts.append(foodCount)
+
     print('\nAverage Score:', sum(scores) / len(scores))
+    print('Average Food Eaten:', sum(foodCounts) / len(foodCounts))
     print('choice 1:{}  choice 0:{}'.format(choices.count(1) / len(choices), choices.count(0) / len(choices)))
     print('Score Requirement:', score_requirement)
 
