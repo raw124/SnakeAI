@@ -539,8 +539,8 @@ class Game():
 
     def render(self):
         # score
-        d = self.screen.blit(self.bg, SCORE_POS, pygame.Rect(SCORE_POS, (50, 100)))
-        f = pygame.font.Font(None, 12)
+        d = self.screen.blit(self.bg, SCORE_POS, pygame.Rect(SCORE_POS, (100, 200)))
+        f = pygame.font.Font(None, 30)
         scoreimage = f.render(SCORE_PREFIX + str(self.currentscore), True, SCORE_COLOR)
         d2 = self.screen.blit(scoreimage, SCORE_POS)
 
